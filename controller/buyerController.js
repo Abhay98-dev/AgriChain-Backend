@@ -1,6 +1,6 @@
 const Buyer = require("../models/buyer");
 const CropBatch = require("../models/cropBatch");
-const { emitBatchSold } = require("../blockchain/emit");
+
 
 /* --------------------------------------------------
    REGISTER BUYER

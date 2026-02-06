@@ -2,7 +2,7 @@ const CropBatch = require("../models/cropBatch");
 const Warehouse = require("../models/warehouse");
 const { getDistanceKm } = require("../utils/distance");
 const { getGeminiBatchAnalysis } = require("../services/geminiService");
-const { emitBatchCreated , emitLogisticsStarted } = require("../blockchain/emit");
+
 
 const {
   predictPrice,
