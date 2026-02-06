@@ -1,7 +1,7 @@
 const axios = require("axios");
 
 const ML_BASE_URL =
-  process.env.ML_BASE_URL || "https://agrichain-ml.onrender.com";
+  process.env.ML_BASE_URL
 
 /* --------------------------------------------------
    HELPER FUNCTIONS (feature engineering)

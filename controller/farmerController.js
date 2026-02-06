@@ -1,7 +1,7 @@
 const CropBatch = require("../models/cropBatch");
 const Warehouse = require("../models/warehouse");
 const { getDistanceKm } = require("../utils/distance");
-const { getGeminiLogisticsAdvice } = require("../services/geminiService");
+const { getGeminiBatchAnalysis } = require("../services/geminiService");
 
 const {
   predictPrice,
@@ -73,7 +73,7 @@ const createCropBatch = async (req, res) => {
 
     /* ---------- CREATE BASE BATCH ---------- */
 
-    const farmerId = "65f000000000000000000001"; // replace after auth
+    const farmerId = "65f000000000000000000001"; // TODO: replace after auth
 
     const cropBatch = await CropBatch.create({
       farmerId,
@@ -86,47 +86,35 @@ const createCropBatch = async (req, res) => {
       status: "LISTED"
     });
 
-    /* ---------- ML INFERENCE ---------- */
+    /* ---------- ML INFERENCE (SAFE & PARTIAL) ---------- */
 
-    let priceML = null;
-    let spoilageML = null;
-    let shelfLifeML = null;
-    let demandML = null;
+    const results = await Promise.allSettled([
+      predictPrice({ cropType, quantity, harvestDate, location }),
+      predictSpoilage({ cropType, harvestDate, spoilageRisk }),
+      predictShelfLife({ cropType, harvestDate }),
+      predictDemand({ cropType, location })
+    ]);
 
-    try {
-      [
-        priceML,
-        spoilageML,
-        shelfLifeML,
-        demandML
-      ] = await Promise.all([
-        predictPrice({
-          cropType,
-          quantity,
-          harvestDate,
-          location
-        }),
-        predictSpoilage({
-          cropType,
-          harvestDate,
-          spoilageRisk
-        }),
-        predictShelfLife({
-          cropType,
-          harvestDate
-        }),
-        predictDemand({
-          cropType,
-          location
-        })
-      ]);
-    } catch (mlError) {
-        console.error("ML Service Failure:", {
-        url: mlError.config?.url,
-        status: mlError.response?.status,
-        data: mlError.response?.data
-        });
-    }
+    const [priceRes, spoilageRes, shelfLifeRes, demandRes] = results;
+
+    const priceML =
+      priceRes.status === "fulfilled" ? priceRes.value : null;
+
+    const spoilageML =
+      spoilageRes.status === "fulfilled" ? spoilageRes.value : null;
+
+    const shelfLifeML =
+      shelfLifeRes.status === "fulfilled" ? shelfLifeRes.value : null;
+
+    const demandML =
+      demandRes.status === "fulfilled" ? demandRes.value : null;
+
+    console.log("ML STATUS:", {
+      price: priceRes.status,
+      spoilage: spoilageRes.status,
+      shelfLife: shelfLifeRes.status,
+      demand: demandRes.status
+    });
 
     /* ---------- ML SAFE EXTRACTION ---------- */
 
@@ -177,17 +165,62 @@ const createCropBatch = async (req, res) => {
     };
 
     cropBatch.status = "OFFERED";
+
+    /* ---------- GEMINI AI ANALYSIS ---------- */
+
+    let aiInsight = null;
+
+    try {
+      const farmerInput = {
+        cropType,
+        quantity,
+        unit,
+        harvestDate,
+        spoilageRisk,
+        location
+      };
+
+      const mlOutput = {
+        expectedSellingPrice,
+        spoilageProbability,
+        shelfLifeDays,
+        demandScore
+      };
+
+      const marketContext = {
+        region: "Pune",
+        demandLevel: demandScore > 0.6 ? "HIGH" : "MEDIUM"
+      };
+
+      aiInsight = await getGeminiBatchAnalysis({
+        farmerInput,
+        mlOutput,
+        marketContext
+      });
+
+      cropBatch.aiInsight = aiInsight;
+    } catch (aiError) {
+      console.error("Gemini AI Failure:", aiError.message);
+    }
+
     await cropBatch.save();
 
     return res.status(201).json({
       success: true,
-      message: "Crop listed and offer generated using ML",
+      message: "Crop listed, offer generated, and AI explanation created",
       batchId: cropBatch._id,
       status: cropBatch.status,
       offer: cropBatch.offer,
+      aiInsight: aiInsight?.farmerView || null,
       meta: {
         shelfLifeDays,
-        demandScore
+        demandScore,
+        mlHealth: {
+          price: priceRes.status,
+          spoilage: spoilageRes.status,
+          shelfLife: shelfLifeRes.status,
+          demand: demandRes.status
+        }
       }
     });
 
@@ -260,7 +293,7 @@ const acceptOrRejectOffer = async (req, res) => {
 };
 
 /* --------------------------------------------------
-   INITIATE LOGISTICS (SCHEMA MATCH ✔️)
+   INITIATE LOGISTICS
 -------------------------------------------------- */
 
 const initiateLogistics = async (req, res) => {
@@ -315,26 +348,11 @@ const initiateLogistics = async (req, res) => {
       }
     }
 
-    let transportCost = shortestDistance * 18;
-    let transportMode = "NORMAL";
-
-    const geminiAdvice = await getGeminiLogisticsAdvice({
-      cropType: cropBatch.cropType,
-      spoilageRisk: cropBatch.spoilageRisk,
-      distanceKm: shortestDistance
-    });
-
-    if (
-      geminiAdvice?.recommendColdChain &&
-      nearestWarehouse.coldStorageAvailable
-    ) {
-      transportMode = "COLD_CHAIN";
-      transportCost *= 1.4;
-    }
+    const transportCost = shortestDistance * 18;
 
     cropBatch.logistics = {
       warehouseId: nearestWarehouse._id,
-      transportMode,
+      transportMode: "NORMAL",
       estimatedDistanceKm: Number(shortestDistance.toFixed(2)),
       estimatedTransportCost: Number(transportCost.toFixed(2)),
       pickupWindow: {
