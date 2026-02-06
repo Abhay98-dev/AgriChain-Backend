@@ -30,7 +30,7 @@ connectDB();
 const farmerRoute = require('./routes/farmerRoute')
 const warehouseRoutes = require("./routes/warehouseRoutes");
 const buyerRoute = require("./routes/buyerRoute")
-const traceRoute = require("./routes/traceRoute")
+// const traceRoute = require("./routes/traceRoute")
 
 const port=3000
 app.use(express.json())
@@ -42,7 +42,7 @@ app.get('/',(req,res)=>{
 app.use('/api/farmer',farmerRoute)
 app.use("/api/warehouse", warehouseRoutes);
 app.use('/api/buyer', buyerRoute)
-app.use('/api/trace', traceRoute)
+// app.use('/api/trace', traceRoute)
 
 app.listen(port, () => {
   console.log(`Server is running on port ${port}`);
