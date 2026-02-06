@@ -113,6 +113,12 @@ const cropBatchSchema = new mongoose.Schema(
     },
       assignedAt: Date
     },
+    blockchainBatchId: {
+      type: Number,
+      index: true,
+      unique: true,
+      sparse: true
+    },
   },
   { timestamps: true }
 );

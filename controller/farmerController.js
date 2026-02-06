@@ -2,6 +2,7 @@ const CropBatch = require("../models/cropBatch");
 const Warehouse = require("../models/warehouse");
 const { getDistanceKm } = require("../utils/distance");
 const { getGeminiBatchAnalysis } = require("../services/geminiService");
+const { emitBatchCreated , emitLogisticsStarted } = require("../blockchain/emit");
 
 const {
   predictPrice,
@@ -205,6 +206,22 @@ const createCropBatch = async (req, res) => {
 
     await cropBatch.save();
 
+   // try {
+     // const blockchainBatchId = await emitBatchCreated(
+      //cropType,
+     // location.city || location.state || "UNKNOWN"
+      //);
+
+    //cropBatch.blockchainBatchId = blockchainBatchId;
+
+
+   // } catch (chainError) {
+     // console.error(
+     // "Blockchain emit failed (BatchCreated):",
+      //chainError.message
+     // );
+    //}
+
     return res.status(201).json({
       success: true,
       message: "Crop listed, offer generated, and AI explanation created",
@@ -364,6 +381,14 @@ const initiateLogistics = async (req, res) => {
 
     cropBatch.status = "IN_TRANSIT";
     await cropBatch.save();
+
+   // try {
+    //  await emitLogisticsStarted(
+    //    cropBatch.blockchainBatchId
+    //  );
+   // } catch (chainError) {
+    //  console.error("Blockchain emit failed (LogisticsStarted):", chainError.message);
+  //  }
 
     return res.status(200).json({
       success: true,

@@ -1,5 +1,6 @@
 const Buyer = require("../models/buyer");
 const CropBatch = require("../models/cropBatch");
+const { emitBatchSold } = require("../blockchain/emit");
 
 /* --------------------------------------------------
    REGISTER BUYER
@@ -155,6 +156,15 @@ const purchaseBatch = async (req, res) => {
     cropBatch.status = "SOLD";
 
     await cropBatch.save();
+
+  //  try {
+    //  await emitBatchSold(
+      //  cropBatch._id.toString(),
+       // buyer.buyerType
+     // );
+   // } catch (chainError) {
+    //  console.error("Blockchain emit failed (BatchSold):", chainError.message);
+    //}
 
     /* ---------- SAVE ORDER HISTORY ---------- */
 
