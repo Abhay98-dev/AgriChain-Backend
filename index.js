@@ -1,14 +1,20 @@
-const express = require('express')
-const app= express()
+const express = require("express");
+const app = express();
 
 const dotenv = require("dotenv");
 const connectDB = require("./connectDB");
 const cors = require("cors");
 
+dotenv.config(); // ✅ LOAD FIRST
+
+const allowedOrigins = [
+  process.env.FRONTEND_URL,
+  "http://localhost:5173"
+];
+
 app.use(
   cors({
     origin: function (origin, callback) {
-      // allow requests with no origin (Postman, curl)
       if (!origin) return callback(null, true);
 
       if (allowedOrigins.includes(origin)) {
@@ -23,27 +29,24 @@ app.use(
   })
 );
 
-dotenv.config();
-
 connectDB();
 
-const farmerRoute = require('./routes/farmerRoute')
+app.use(express.json());
+
+const farmerRoute = require("./routes/farmerRoute");
 const warehouseRoutes = require("./routes/warehouseRoutes");
-const buyerRoute = require("./routes/buyerRoute")
-// const traceRoute = require("./routes/traceRoute")
+const buyerRoute = require("./routes/buyerRoute");
 
-const port=3000
-app.use(express.json())
+app.get("/", (req, res) => {
+  res.send("helll");
+});
 
-app.get('/',(req,res)=>{
-    res.send("helll")
-})
-
-app.use('/api/farmer',farmerRoute)
+app.use("/api/farmer", farmerRoute);
 app.use("/api/warehouse", warehouseRoutes);
-app.use('/api/buyer', buyerRoute)
-// app.use('/api/trace', traceRoute)
+app.use("/api/buyer", buyerRoute);
+
+const port = process.env.PORT || 3000;
 
 app.listen(port, () => {
-  console.log(`Server is running on port ${port}`);
+  console.log(`Server running on port ${port}`);
 });
