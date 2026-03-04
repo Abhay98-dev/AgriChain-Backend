@@ -133,9 +133,46 @@ const createCropBatch = async (req, res) => {
 
     /* ---------- COST CALCULATION ---------- */
 
-    const transportCost = quantity * 2;
-    const storageCost = quantity * 1.5;
-    const labourCost = quantity * 1;
+    /* ---------- ESTIMATE TRANSPORT COST ---------- */
+
+    // fetch warehouses
+    const warehouses = await Warehouse.find();
+
+    if (!warehouses.length) {
+      return res.status(500).json({
+      success: false,
+      message: "No warehouses available for transport estimation"
+      });
+    }
+
+    // select best warehouse using existing logic
+    const bestWarehouse = selectBestWarehouse(
+    { location, spoilageRisk },
+    warehouses,
+    demandScore
+    );
+
+    // estimate distance using haversine
+    const estimatedDistance = getDistanceKm(
+    location.latitude,
+    location.longitude,
+    bestWarehouse.location.latitude,
+    bestWarehouse.location.longitude
+    );
+
+    // logistics cost model
+    const costPerKm = 12;
+    const baseTruckCost = 150;
+
+    // convert kg → quintal equivalent
+    const quantityFactor = quantity / 100;
+
+    // final estimated transport cost
+    const transportCost =
+      baseTruckCost +
+      (estimatedDistance * costPerKm * quantityFactor);
+      const storageCost = quantity * 1.5;
+      const labourCost = quantity * 1;
 
     const spoilageBuffer =
       expectedSellingPrice * spoilageProbability;
@@ -155,7 +192,8 @@ const createCropBatch = async (req, res) => {
 
     cropBatch.offer = {
       expectedSellingPrice,
-      transportCost,
+      estimatedDistanceKm: Number(estimatedDistance.toFixed(2)),
+      transportCost: Number(transportCost.toFixed(2)),
       storageCost,
       labourCost,
       spoilageBuffer,

@@ -1,5 +1,7 @@
 const Buyer = require("../models/buyer");
 const CropBatch = require("../models/cropBatch");
+const Warehouse = require("../models/warehouse");
+const { getDistanceKm } = require("../utils/distance");
 
 
 /* --------------------------------------------------
@@ -14,8 +16,6 @@ const registerBuyer = async (req, res) => {
       location,
       contactInfo
     } = req.body;
-
-    /* ---------- VALIDATION ---------- */
 
     const ALLOWED_BUYERS = [
       "LOCAL_RETAILER",
@@ -45,8 +45,6 @@ const registerBuyer = async (req, res) => {
       });
     }
 
-    /* ---------- CREATE BUYER ---------- */
-
     const buyer = await Buyer.create({
       name,
       buyerType,
@@ -70,26 +68,75 @@ const registerBuyer = async (req, res) => {
   }
 };
 
+
+
 /* --------------------------------------------------
-   VIEW AVAILABLE BATCHES (BUYER VIEW)
+   VIEW AVAILABLE BATCHES (BUYER MARKETPLACE)
 -------------------------------------------------- */
 
 const getAvailableBatchesForBuyer = async (req, res) => {
   try {
+
+    const { buyerId } = req.query;
+
+    let buyer = null;
+
+    if (buyerId) {
+      buyer = await Buyer.findById(buyerId);
+    }
+
     const batches = await CropBatch.find({
-      status: { $in: ["STORED", "IN_TRANSIT"] }
+      status: { $in: ["IN_TRANSIT", "STORED"] }
     }).sort({ updatedAt: -1 });
 
-    const formatted = batches.map(batch => ({
-      batchId: batch._id,
-      cropType: batch.cropType,
-      quantity: batch.quantity,
-      unit: batch.unit,
-      warehouseId: batch.logistics?.warehouseId || null,
-      expectedPrice: batch.offer?.expectedSellingPrice || null,
-      riskLevel: batch.aiInsight?.warehouseView?.riskLevel || "UNKNOWN",
-      sellByDate: batch.aiInsight?.warehouseView?.sellByDate || null
-    }));
+    const formatted = [];
+
+    for (const batch of batches) {
+
+      const warehouse = await Warehouse.findById(
+        batch.logistics?.warehouseId
+      );
+
+      let distanceFromBuyer = null;
+
+      if (buyer && warehouse) {
+
+        distanceFromBuyer = getDistanceKm(
+          buyer.location.latitude,
+          buyer.location.longitude,
+          warehouse.location.latitude,
+          warehouse.location.longitude
+        );
+
+      }
+
+      formatted.push({
+
+        batchId: batch._id,
+
+        cropType: batch.cropType,
+
+        quantity: batch.quantity,
+
+        unit: batch.unit,
+
+        warehouseId: warehouse?._id || null,
+
+        warehouseName: warehouse?.name || "Unknown",
+
+        expectedPrice: batch.offer?.expectedSellingPrice || null,
+
+        riskLevel: batch.aiInsight?.warehouseView?.riskLevel || "UNKNOWN",
+
+        sellByDate: batch.aiInsight?.warehouseView?.sellByDate || null,
+
+        distanceFromBuyerKm: distanceFromBuyer
+          ? Number(distanceFromBuyer.toFixed(2))
+          : null
+
+      });
+
+    }
 
     return res.status(200).json({
       success: true,
@@ -98,13 +145,18 @@ const getAvailableBatchesForBuyer = async (req, res) => {
     });
 
   } catch (error) {
+
     console.error("Get Buyer Batches Error:", error);
+
     return res.status(500).json({
       success: false,
       message: "Failed to fetch available batches"
     });
+
   }
 };
+
+
 
 /* --------------------------------------------------
    BUYER PURCHASE BATCH
@@ -112,6 +164,7 @@ const getAvailableBatchesForBuyer = async (req, res) => {
 
 const purchaseBatch = async (req, res) => {
   try {
+
     const { buyerId, batchId, finalAgreedPrice } = req.body;
 
     if (!buyerId || !batchId || !finalAgreedPrice) {
@@ -122,6 +175,7 @@ const purchaseBatch = async (req, res) => {
     }
 
     const buyer = await Buyer.findById(buyerId);
+
     if (!buyer) {
       return res.status(404).json({
         success: false,
@@ -130,6 +184,7 @@ const purchaseBatch = async (req, res) => {
     }
 
     const cropBatch = await CropBatch.findById(batchId);
+
     if (!cropBatch) {
       return res.status(404).json({
         success: false,
@@ -144,56 +199,86 @@ const purchaseBatch = async (req, res) => {
       });
     }
 
+    /* ---------- PRICE VALIDATION ---------- */
+
+    const minimumPrice = cropBatch.offer?.finalFarmerPrice || 0;
+
+    if (finalAgreedPrice < minimumPrice) {
+      return res.status(400).json({
+        success: false,
+        message: `Price too low. Minimum acceptable price is ₹${minimumPrice}`
+      });
+    }
+
+
     /* ---------- ASSIGN BUYER ---------- */
 
     cropBatch.buyer = {
+
       buyerId: buyer._id,
+
       buyerType: buyer.buyerType,
+
       finalSellingPrice: finalAgreedPrice,
+
       soldAt: new Date()
+
     };
 
     cropBatch.status = "SOLD";
 
     await cropBatch.save();
 
-  //  try {
-    //  await emitBatchSold(
-      //  cropBatch._id.toString(),
-       // buyer.buyerType
-     // );
-   // } catch (chainError) {
-    //  console.error("Blockchain emit failed (BatchSold):", chainError.message);
-    //}
 
     /* ---------- SAVE ORDER HISTORY ---------- */
 
     buyer.orders.push({
+
       batchId: cropBatch._id,
+
       cropType: cropBatch.cropType,
+
       quantity: cropBatch.quantity,
+
       finalPrice: finalAgreedPrice,
+
       purchasedAt: new Date()
+
     });
 
     await buyer.save();
 
+
     return res.status(200).json({
+
       success: true,
+
       message: "Batch purchased successfully",
+
       batchId: cropBatch._id,
+
       buyerId: buyer._id,
+
       status: cropBatch.status
+
     });
 
   } catch (error) {
+
     console.error("Purchase Batch Error:", error);
+
     return res.status(500).json({
+
       success: false,
+
       message: "Internal server error"
+
     });
+
   }
 };
+
+
 
 /* --------------------------------------------------
    GET BUYER ORDER HISTORY
@@ -201,6 +286,7 @@ const purchaseBatch = async (req, res) => {
 
 const getBuyerOrders = async (req, res) => {
   try {
+
     const { buyerId } = req.params;
 
     if (!buyerId) {
@@ -220,19 +306,30 @@ const getBuyerOrders = async (req, res) => {
     }
 
     return res.status(200).json({
+
       success: true,
+
       buyerId: buyer._id,
+
       orders: buyer.orders || []
+
     });
 
   } catch (error) {
+
     console.error("Get Buyer Orders Error:", error);
+
     return res.status(500).json({
+
       success: false,
+
       message: "Failed to fetch buyer orders"
+
     });
+
   }
 };
+
 
 module.exports = {
   registerBuyer,

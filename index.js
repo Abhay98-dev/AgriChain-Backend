@@ -36,6 +36,7 @@ app.use(express.json());
 const farmerRoute = require("./routes/farmerRoute");
 const warehouseRoutes = require("./routes/warehouseRoutes");
 const buyerRoute = require("./routes/buyerRoute");
+const authRoute = require("./routes/authRoute");
 
 app.get("/", (req, res) => {
   res.send("helll");
@@ -44,6 +45,7 @@ app.get("/", (req, res) => {
 app.use("/api/farmer", farmerRoute);
 app.use("/api/warehouse", warehouseRoutes);
 app.use("/api/buyer", buyerRoute);
+app.use("/api/auth", authRoute);
 
 const port = process.env.PORT || 3000;
 
