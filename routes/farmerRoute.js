@@ -1,10 +1,13 @@
 const express = require('express')
 const router = express.Router()
 
+const { authenticate } = require('../middleware/authMiddleware')
+const { requireRole } = require('../middleware/roleMiddleware')
 const {createCropBatch , acceptOrRejectOffer , initiateLogistics } = require('../controller/farmerController')
 
-router.post('/crop-batch', createCropBatch)
-router.post('/crop-batch/accept-or-reject', acceptOrRejectOffer)
-router.post('/crop-batch/initiate-logistics', initiateLogistics)
+router.post('/crop-batch',authenticate , requireRole("USER"), createCropBatch)
+router.post('/crop-batch/accept-or-reject',authenticate , requireRole("USER"), acceptOrRejectOffer)
+router.post('/crop-batch/initiate-logistics', authenticate , requireRole("USER"), initiateLogistics)
+router.get('/crop-batch', authenticate , requireRole("USER"), getMyBatches)
 
 module.exports = router

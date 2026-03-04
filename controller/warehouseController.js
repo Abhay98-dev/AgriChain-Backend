@@ -171,11 +171,105 @@ const getUrgentBatches = async (req, res) => {
   }
 };
 
+const createWarehouse = async (req, res) => {
+  try {
+    const { name, location, latitude, longitude, coldStorageAvailable } = req.body;
 
+    if (!name || !location || latitude === undefined || longitude === undefined) {
+      return res.status(400).json({
+        success: false,
+        message: "name, location, latitude, longitude are required"
+      });
+    }
+
+    const warehouse = await Warehouse.create({
+      name,
+      location,
+      latitude,
+      longitude,
+      coldStorageAvailable: coldStorageAvailable || false
+    });
+
+    return res.status(201).json({
+      success: true,
+      message: "Warehouse created successfully",
+      warehouse
+    });
+
+  } catch (error) {
+    console.error("Create Warehouse Error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to create warehouse"
+    });
+  }
+};
+
+const updateWarehouse = async (req, res) => {
+  try {
+    const { warehouseId } = req.params;
+
+    const warehouse = await Warehouse.findByIdAndUpdate(
+      warehouseId,
+      req.body,
+      { new: true, runValidators: true }
+    );
+
+    if (!warehouse) {
+      return res.status(404).json({
+        success: false,
+        message: "Warehouse not found"
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: "Warehouse updated successfully",
+      warehouse
+    });
+
+  } catch (error) {
+    console.error("Update Warehouse Error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to update warehouse"
+    });
+  }
+};
+
+const deleteWarehouse = async (req, res) => {
+  try {
+    const { warehouseId } = req.params;
+
+    const warehouse = await Warehouse.findByIdAndDelete(warehouseId);
+
+    if (!warehouse) {
+      return res.status(404).json({
+        success: false,
+        message: "Warehouse not found"
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: "Warehouse deleted successfully"
+    });
+
+  } catch (error) {
+    console.error("Delete Warehouse Error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to delete warehouse"
+    });
+  }
+};
 
 module.exports = {
   getAllWarehouses,
   getWarehouseBatches,
   getWarehouseBatchById,
   getUrgentBatches,
+  createWarehouse,
+  updateWarehouse,
+  deleteWarehouse
 };

@@ -3,6 +3,7 @@ const Warehouse = require("../models/warehouse");
 const { getGeminiBatchAnalysis } = require("../services/geminiService");
 const { getRoadDistanceKm } = require("../utils/RoadDistance");
 const { selectBestWarehouse } = require("../utils/selectBestWarehouse");
+const { getDistanceKm } = require("../utils/distance");
 
 const {
   predictPrice,
@@ -74,10 +75,10 @@ const createCropBatch = async (req, res) => {
 
     /* ---------- CREATE BASE BATCH ---------- */
 
-    const farmerId = "65f000000000000000000001"; // TODO: replace after auth
+  //  const farmerId = "65f000000000000000000001"; // TODO: replace after auth
 
     const cropBatch = await CropBatch.create({
-      farmerId,
+      farmerId: req.user.userId,
       cropType,
       quantity,
       unit,
@@ -296,6 +297,13 @@ const acceptOrRejectOffer = async (req, res) => {
   try {
     const { batchId, action } = req.body;
 
+    if (cropBatch.farmerId.toString() !== req.user.userId) {
+      return res.status(403).json({
+      success: false,
+      message: "You do not own this crop batch"
+    });
+    }
+
     if (!batchId || !action) {
       return res.status(400).json({
         success: false,
@@ -355,6 +363,13 @@ const initiateLogistics = async (req, res) => {
   try {
 
     const { batchId } = req.body;
+
+    if (cropBatch.farmerId.toString() !== req.user.userId) {
+      return res.status(403).json({
+      success: false,
+      message: "You do not own this crop batch"
+    });
+    }
 
     if (!batchId) {
       return res.status(400).json({
@@ -484,8 +499,89 @@ const initiateLogistics = async (req, res) => {
   }
 };
 
+
+
+const getMyBatches = async (req, res) => {
+  try {
+    // 1️⃣ Get farmer ID from authenticated user
+    const farmerId = req.user.userId;
+
+    // 2️⃣ Optional status filter
+    const { status } = req.query;
+
+    let query = { farmer: farmerId };
+
+    if (status) {
+      query.status = status;
+    }
+
+    // 3️⃣ Fetch batches created by farmer
+    const batches = await CropBatch.find(query)
+      .populate("warehouse", "name location latitude longitude coldStorageAvailable")
+      .sort({ createdAt: -1 });
+
+    // 4️⃣ Format response data
+    const formattedBatches = batches.map((batch) => ({
+      batchId: batch._id,
+
+      cropType: batch.cropType,
+      quantity: batch.quantity,
+      unit: batch.unit,
+      harvestDate: batch.harvestDate,
+
+      status: batch.status,
+
+      expectedSellingPrice: batch.expectedSellingPrice,
+      finalFarmerPrice: batch.finalFarmerPrice,
+      confidenceScore: batch.confidenceScore,
+
+      spoilageProbability: batch.spoilageProbability,
+      shelfLifeDays: batch.shelfLifeDays,
+      demandScore: batch.demandScore,
+
+      warehouse: batch.warehouse
+        ? {
+            name: batch.warehouse.name,
+            location: batch.warehouse.location,
+            latitude: batch.warehouse.latitude,
+            longitude: batch.warehouse.longitude,
+            coldStorageAvailable: batch.warehouse.coldStorageAvailable,
+          }
+        : null,
+
+      logistics: batch.logistics
+        ? {
+            transportMode: batch.logistics.transportMode,
+            estimatedDistanceKm: batch.logistics.estimatedDistanceKm,
+            estimatedTransportCost: batch.logistics.estimatedTransportCost,
+            estimatedTravelTime: batch.logistics.estimatedTravelTime,
+          }
+        : null,
+
+      createdAt: batch.createdAt,
+    }));
+
+    // 5️⃣ Send response
+    res.status(200).json({
+      success: true,
+      count: formattedBatches.length,
+      batches: formattedBatches,
+    });
+  } catch (error) {
+    console.error("Error fetching farmer batches:", error);
+
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch crop batches",
+      error: error.message,
+    });
+  }
+};
+
+
 module.exports = {
   createCropBatch,
   acceptOrRejectOffer,
-  initiateLogistics
+  initiateLogistics,
+  getMyBatches
 };
