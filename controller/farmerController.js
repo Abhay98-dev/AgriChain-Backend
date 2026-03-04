@@ -1,8 +1,8 @@
 const CropBatch = require("../models/cropBatch");
 const Warehouse = require("../models/warehouse");
-const { getDistanceKm } = require("../utils/distance");
 const { getGeminiBatchAnalysis } = require("../services/geminiService");
-
+const { getRoadDistanceKm } = require("../utils/RoadDistance");
+const { selectBestWarehouse } = require("../utils/selectBestWarehouse");
 
 const {
   predictPrice,
@@ -315,6 +315,7 @@ const acceptOrRejectOffer = async (req, res) => {
 
 const initiateLogistics = async (req, res) => {
   try {
+
     const { batchId } = req.body;
 
     if (!batchId) {
@@ -341,6 +342,7 @@ const initiateLogistics = async (req, res) => {
     }
 
     const warehouses = await Warehouse.find();
+
     if (!warehouses.length) {
       return res.status(500).json({
         success: false,
@@ -348,61 +350,99 @@ const initiateLogistics = async (req, res) => {
       });
     }
 
-    let nearestWarehouse = null;
-    let shortestDistance = Infinity;
+    /* ------------------------------
+       STEP 1 : SELECT BEST WAREHOUSE
+    ------------------------------ */
 
-    for (const warehouse of warehouses) {
-      const distance = getDistanceKm(
-        cropBatch.location.latitude,
-        cropBatch.location.longitude,
-        warehouse.location.latitude,
-        warehouse.location.longitude
-      );
+    const demandScore =
+      cropBatch.aiInsight?.mlOutput?.demandScore || 0.5;
 
-      if (distance < shortestDistance) {
-        shortestDistance = distance;
-        nearestWarehouse = warehouse;
-      }
+    const bestWarehouse = selectBestWarehouse(
+      cropBatch,
+      warehouses,
+      demandScore
+    );
+
+    if (!bestWarehouse) {
+      return res.status(500).json({
+        success: false,
+        message: "No suitable warehouse found"
+      });
     }
 
-    const transportCost = shortestDistance * 18;
+    /* ------------------------------
+       STEP 2 : GET ROAD DISTANCE
+    ------------------------------ */
+
+    const roadData = await getRoadDistanceKm(
+      cropBatch.location.latitude,
+      cropBatch.location.longitude,
+      bestWarehouse.location.latitude,
+      bestWarehouse.location.longitude
+    );
+
+    const roadDistance = roadData.distanceKm;
+    const travelTime = roadData.durationMin;
+
+    /* ------------------------------
+       STEP 3 : SMART TRANSPORT COST
+    ------------------------------ */
+
+    const costPerKm = 12;
+
+    const quantityFactor =
+      cropBatch.unit === "quintal"
+        ? cropBatch.quantity
+        : cropBatch.quantity / 100;
+
+    const transportCost =
+      roadDistance * costPerKm * quantityFactor;
+
+    /* ------------------------------
+       STEP 4 : SAVE LOGISTICS
+    ------------------------------ */
 
     cropBatch.logistics = {
-      warehouseId: nearestWarehouse._id,
+      warehouseId: bestWarehouse._id,
+
       transportMode: "NORMAL",
-      estimatedDistanceKm: Number(shortestDistance.toFixed(2)),
-      estimatedTransportCost: Number(transportCost.toFixed(2)),
+
+      estimatedDistanceKm: roadDistance,
+
+      estimatedTravelTimeMin: travelTime,
+
+      estimatedTransportCost:
+        Number(transportCost.toFixed(2)),
+
       pickupWindow: {
         from: new Date(Date.now() + 6 * 60 * 60 * 1000),
         to: new Date(Date.now() + 12 * 60 * 60 * 1000)
       },
+
       assignedAt: new Date()
     };
 
     cropBatch.status = "IN_TRANSIT";
-    await cropBatch.save();
 
-   // try {
-    //  await emitLogisticsStarted(
-    //    cropBatch.blockchainBatchId
-    //  );
-   // } catch (chainError) {
-    //  console.error("Blockchain emit failed (LogisticsStarted):", chainError.message);
-  //  }
+    await cropBatch.save();
 
     return res.status(200).json({
       success: true,
       message: "Logistics initiated successfully",
       batchId: cropBatch._id,
+      warehouseSelected: bestWarehouse.name,
       logistics: cropBatch.logistics
     });
 
   } catch (error) {
+
     console.error("Logistics Error:", error);
+
     return res.status(500).json({
       success: false,
       message: "Internal server error"
     });
+
   }
 };
 

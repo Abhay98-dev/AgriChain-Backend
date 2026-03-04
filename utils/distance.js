@@ -1,5 +1,7 @@
 const getDistanceKm = (lat1, lon1, lat2, lon2) => {
-  const R = 6371; // Earth radius in KM
+
+  const R = 6371;
+
   const dLat = ((lat2 - lat1) * Math.PI) / 180;
   const dLon = ((lon2 - lon1) * Math.PI) / 180;
 
@@ -11,6 +13,7 @@ const getDistanceKm = (lat1, lon1, lat2, lon2) => {
       Math.sin(dLon / 2);
 
   const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+
   return R * c;
 };
 
