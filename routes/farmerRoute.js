@@ -1,9 +1,9 @@
 const express = require('express')
 const router = express.Router()
 
-const { authenticate } = require('../middleware/authMiddleware')
-const { requireRole } = require('../middleware/roleMiddleware')
-const {createCropBatch , acceptOrRejectOffer , initiateLogistics } = require('../controller/farmerController')
+const { authenticate } = require('../middlewares/authMiddleware')
+const {requireRole}   = require('../middlewares/roleMiddleware')
+const {createCropBatch , acceptOrRejectOffer , initiateLogistics , getMyBatches } = require('../controller/farmerController')
 
 router.post('/crop-batch',authenticate , requireRole("USER"), createCropBatch)
 router.post('/crop-batch/accept-or-reject',authenticate , requireRole("USER"), acceptOrRejectOffer)

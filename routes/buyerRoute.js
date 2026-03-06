@@ -1,17 +1,61 @@
-const express = require('express')
-const router = express.Router()
+const express = require("express");
+const router = express.Router();
 
-const {  registerBuyer,
+const {
+  registerBuyer,
   getAvailableBatchesForBuyer,
   purchaseBatch,
-  getBuyerOrders} = require("../controller/buyerController")
+  getBuyerOrders
+} = require("../controller/buyerController");
 
-router.post("/register", registerBuyer)
+const { authenticate } = require("../middlewares/authMiddleware");
+const { requireRole } = require("../middlewares/roleMiddleware");
 
-router.get("/:buyerId/available-batches", getAvailableBatchesForBuyer)
+/* --------------------------------------------------
+   BUYER REGISTRATION
+-------------------------------------------------- */
 
-router.post("/:buyerId/purchase", purchaseBatch)
+router.post(
+  "/register",
+  authenticate,
+  requireRole("USER"),
+  registerBuyer
+);
 
-router.get("/:buyerId/orders", getBuyerOrders)
 
-module.exports = router
+/* --------------------------------------------------
+   BUYER MARKETPLACE
+-------------------------------------------------- */
+
+router.get(
+  "/marketplace",
+  authenticate,
+  requireRole("USER"),
+  getAvailableBatchesForBuyer
+);
+
+
+/* --------------------------------------------------
+   PURCHASE BATCH
+-------------------------------------------------- */
+
+router.post(
+  "/purchase",
+  authenticate,
+  requireRole("USER"),
+  purchaseBatch
+);
+
+
+/* --------------------------------------------------
+   BUYER ORDER HISTORY
+-------------------------------------------------- */
+
+router.get(
+  "/orders/:buyerId",
+  authenticate,
+  requireRole("USER"),
+  getBuyerOrders
+);
+
+module.exports = router;

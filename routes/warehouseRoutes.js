@@ -11,8 +11,8 @@ const {
   getUrgentBatches
 } = require("../controller/warehouseController");
 
-const { authenticate } = require("../middleware/authMiddleware");
-const { requireRole } = require("../middleware/roleMiddleware");
+const { authenticate } = require("../middlewares/authMiddleware");
+const  {requireRole}  = require("../middlewares/roleMiddleware");
 
 /* --------------------------------------------------
    WAREHOUSE CRUD (ADMIN ONLY)
