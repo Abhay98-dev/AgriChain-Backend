@@ -292,17 +292,9 @@ const createCropBatch = async (req, res) => {
 /* --------------------------------------------------
    ACCEPT / REJECT OFFER
 -------------------------------------------------- */
-
 const acceptOrRejectOffer = async (req, res) => {
   try {
     const { batchId, action } = req.body;
-
-    if (cropBatch.farmerId.toString() !== req.user.userId) {
-      return res.status(403).json({
-      success: false,
-      message: "You do not own this crop batch"
-    });
-    }
 
     if (!batchId || !action) {
       return res.status(400).json({
@@ -318,12 +310,21 @@ const acceptOrRejectOffer = async (req, res) => {
       });
     }
 
+    // ✅ FETCH FIRST (IMPORTANT)
     const cropBatch = await CropBatch.findById(batchId);
 
     if (!cropBatch) {
       return res.status(404).json({
         success: false,
         message: "Crop batch not found"
+      });
+    }
+
+    // ✅ NOW CHECK OWNERSHIP
+    if (cropBatch.farmerId.toString() !== req.user.userId) {
+      return res.status(403).json({
+        success: false,
+        message: "You do not own this crop batch"
       });
     }
 
@@ -354,7 +355,6 @@ const acceptOrRejectOffer = async (req, res) => {
     });
   }
 };
-
 /* --------------------------------------------------
    INITIATE LOGISTICS
 -------------------------------------------------- */
@@ -364,19 +364,13 @@ const initiateLogistics = async (req, res) => {
 
     const { batchId } = req.body;
 
-    if (cropBatch.farmerId.toString() !== req.user.userId) {
-      return res.status(403).json({
-      success: false,
-      message: "You do not own this crop batch"
-    });
-    }
-
     if (!batchId) {
       return res.status(400).json({
         success: false,
         message: "batchId is required"
       });
     }
+
 
     const cropBatch = await CropBatch.findById(batchId);
 
@@ -386,6 +380,14 @@ const initiateLogistics = async (req, res) => {
         message: "Crop batch not found"
       });
     }
+
+    if (cropBatch.farmerId.toString() !== req.user.userId) {
+      return res.status(403).json({
+      success: false,
+      message: "You do not own this crop batch"
+    });
+    }
+
 
     if (cropBatch.status !== "ACCEPTED") {
       return res.status(400).json({
