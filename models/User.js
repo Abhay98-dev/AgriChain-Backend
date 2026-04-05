@@ -51,8 +51,19 @@ const userSchema = new mongoose.Schema(
       finalPrice: Number,
       purchasedAt: Date
     }
-  ]
+  ],
 
+  buyerProfile: {
+    buyerType: {
+      type: String,
+      enum: [
+        "LOCAL_RETAILER",
+        "WHOLESALER",
+        "FOOD_PROCESSOR",
+        "EXPORTER"
+      ]
+    }
+  },
 },
 {
   timestamps: true

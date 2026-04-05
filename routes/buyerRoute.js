@@ -2,7 +2,6 @@ const express = require("express");
 const router = express.Router();
 
 const {
-  registerBuyer,
   getAvailableBatchesForBuyer,
   purchaseBatch,
   getBuyerOrders
@@ -11,16 +10,16 @@ const {
 const { authenticate } = require("../middlewares/authMiddleware");
 const { requireRole } = require("../middlewares/roleMiddleware");
 
-/* --------------------------------------------------
-   BUYER REGISTRATION
--------------------------------------------------- */
+// /* --------------------------------------------------
+//    BUYER REGISTRATION
+// -------------------------------------------------- */
 
-router.post(
-  "/register",
-  authenticate,
-  requireRole("USER"),
-  registerBuyer
-);
+// router.post(
+//   "/register",
+//   authenticate,
+//   requireRole("USER"),
+//   registerBuyer
+// );
 
 
 /* --------------------------------------------------

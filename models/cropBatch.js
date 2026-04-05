@@ -119,6 +119,15 @@ const cropBatchSchema = new mongoose.Schema(
       unique: true,
       sparse: true
     },
+
+    buyer: {
+    userId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User"
+    },
+    finalSellingPrice: Number,
+    soldAt: Date
+  }
   },
   { timestamps: true }
 );

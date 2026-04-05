@@ -1,4 +1,4 @@
-const Buyer = require("../models/buyer");
+const User = require("../models/User");
 const CropBatch = require("../models/cropBatch");
 const Warehouse = require("../models/warehouse");
 
@@ -10,64 +10,64 @@ const { getRoadDistanceKm } = require("../utils/RoadDistance");
    REGISTER BUYER
 -------------------------------------------------- */
 
-const registerBuyer = async (req, res) => {
-  try {
+// const registerBuyer = async (req, res) => {
+//   try {
 
-    const { name, buyerType, location, contactInfo } = req.body;
+//     const { name, buyerType, location, contactInfo } = req.body;
 
-    const ALLOWED_BUYERS = [
-      "LOCAL_RETAILER",
-      "WHOLESALER",
-      "FOOD_PROCESSOR",
-      "EXPORTER"
-    ];
+//     const ALLOWED_BUYERS = [
+//       "LOCAL_RETAILER",
+//       "WHOLESALER",
+//       "FOOD_PROCESSOR",
+//       "EXPORTER"
+//     ];
 
-    if (!name || !buyerType || !location || !contactInfo) {
-      return res.status(400).json({
-        success: false,
-        message: "Missing required fields"
-      });
-    }
+//     if (!name || !buyerType || !location || !contactInfo) {
+//       return res.status(400).json({
+//         success: false,
+//         message: "Missing required fields"
+//       });
+//     }
 
-    if (!ALLOWED_BUYERS.includes(buyerType)) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid buyer type"
-      });
-    }
+//     if (!ALLOWED_BUYERS.includes(buyerType)) {
+//       return res.status(400).json({
+//         success: false,
+//         message: "Invalid buyer type"
+//       });
+//     }
 
-    if (!location.city || !location.state) {
-      return res.status(400).json({
-        success: false,
-        message: "Location must include city and state"
-      });
-    }
+//     if (!location.city || !location.state) {
+//       return res.status(400).json({
+//         success: false,
+//         message: "Location must include city and state"
+//       });
+//     }
 
-    const buyer = await Buyer.create({
-      name,
-      buyerType,
-      location,
-      contactInfo,
-      createdAt: new Date()
-    });
+//     const buyer = await User.create({
+//       name,
+//       buyerType,
+//       location,
+//       contactInfo,
+//       createdAt: new Date()
+//     });
 
-    return res.status(201).json({
-      success: true,
-      message: "Buyer registered successfully",
-      buyerId: buyer._id
-    });
+//     return res.status(201).json({
+//       success: true,
+//       message: "Buyer registered successfully",
+//       buyerId: buyer._id
+//     });
 
-  } catch (error) {
+//   } catch (error) {
 
-    console.error("Register Buyer Error:", error);
+//     console.error("Register Buyer Error:", error);
 
-    return res.status(500).json({
-      success: false,
-      message: "Internal server error"
-    });
+//     return res.status(500).json({
+//       success: false,
+//       message: "Internal server error"
+//     });
 
-  }
-};
+//   }
+// };
 
 
 
@@ -84,7 +84,7 @@ const getAvailableBatchesForBuyer = async (req, res) => {
     let buyer = null;
 
     if (buyerId) {
-      buyer = await Buyer.findById(buyerId);
+      buyer = await User.findById(buyerId);
     }
 
     const batches = await CropBatch.find({
@@ -200,119 +200,104 @@ const getAvailableBatchesForBuyer = async (req, res) => {
 /* --------------------------------------------------
    PURCHASE BATCH
 -------------------------------------------------- */
-
 const purchaseBatch = async (req, res) => {
-
   try {
-
     const { buyerId, batchId, finalAgreedPrice } = req.body;
 
+    // 1. Basic validation
     if (!buyerId || !batchId || !finalAgreedPrice) {
-
       return res.status(400).json({
         success: false,
         message: "buyerId, batchId and finalAgreedPrice are required"
       });
-
     }
 
-    const buyer = await Buyer.findById(buyerId);
+    // 2. Find buyer (User)
+    const buyer = await User.findById(buyerId);
 
     if (!buyer) {
-
       return res.status(404).json({
         success: false,
-        message: "Buyer not found"
+        message: "User not found"
       });
-
     }
 
-    /* ---------- ATOMIC PURCHASE ---------- */
-
-    const cropBatch = await CropBatch.findOneAndUpdate(
-
-      {
-        _id: batchId,
-        status: { $in: ["STORED", "IN_TRANSIT"] }
-      },
-
-      {
-        $set: {
-          status: "SOLD",
-          buyer: {
-            buyerId: buyer._id,
-            buyerType: buyer.buyerType,
-            finalSellingPrice: finalAgreedPrice,
-            soldAt: new Date()
-          }
-        }
-      },
-
-      { new: true }
-
-    );
+    // 3. Find batch FIRST (IMPORTANT FIX)
+    const cropBatch = await CropBatch.findById(batchId);
 
     if (!cropBatch) {
+      return res.status(404).json({
+        success: false,
+        message: "Batch not found"
+      });
+    }
 
+    // 4. Check batch availability
+    if (!["STORED", "IN_TRANSIT"].includes(cropBatch.status)) {
       return res.status(400).json({
         success: false,
         message: "Batch already sold or unavailable"
       });
-
     }
 
-    /* ---------- PRICE VALIDATION ---------- */
+    // 5. Prevent self-buy (IMPORTANT)
+    if (cropBatch.farmerId?.toString() === buyerId) {
+      return res.status(400).json({
+        success: false,
+        message: "You cannot buy your own crop"
+      });
+    }
 
+    // 6. Validate price BEFORE updating (CRITICAL FIX)
     const minimumPrice = cropBatch.offer?.finalFarmerPrice || 0;
 
     if (finalAgreedPrice < minimumPrice) {
-
       return res.status(400).json({
         success: false,
         message: `Price too low. Minimum acceptable price is ₹${minimumPrice}`
       });
-
     }
 
-    /* ---------- SAVE ORDER HISTORY ---------- */
+    // 7. NOW update batch (correct order)
+    cropBatch.status = "SOLD";
 
+    cropBatch.buyer = {
+      userId: buyer._id, // ✅ FIXED (no buyerType)
+      finalSellingPrice: finalAgreedPrice,
+      soldAt: new Date()
+    };
+
+    await cropBatch.save();
+
+    // 8. Save order history in User
     buyer.orders.push({
-
       batchId: cropBatch._id,
       cropType: cropBatch.cropType,
       quantity: cropBatch.quantity,
       finalPrice: finalAgreedPrice,
       purchasedAt: new Date()
-
     });
 
     await buyer.save();
 
+    // 9. Response
     return res.status(200).json({
-
       success: true,
       message: "Batch purchased successfully",
       batchId: cropBatch._id,
       buyerId: buyer._id,
       status: cropBatch.status
-
     });
 
   } catch (error) {
-
     console.error("Purchase Batch Error:", error);
 
     return res.status(500).json({
-
       success: false,
       message: "Internal server error"
-
     });
-
   }
-
 };
-
 
 
 /* --------------------------------------------------
@@ -334,7 +319,7 @@ const getBuyerOrders = async (req, res) => {
 
     }
 
-    const buyer = await Buyer.findById(buyerId);
+    const buyer = await User.findById(buyerId);
 
     if (!buyer) {
 
@@ -371,7 +356,6 @@ const getBuyerOrders = async (req, res) => {
 
 
 module.exports = {
-  registerBuyer,
   getAvailableBatchesForBuyer,
   purchaseBatch,
   getBuyerOrders
