@@ -132,6 +132,18 @@ const createCropBatch = async (req, res) => {
     const demandScore =
       demandML?.demand_score ?? 0.5;
 
+    cropBatch.mlInsights = {
+      spoilageProbability,
+      shelfLifeDays,
+      demandScore,
+      mlHealth: {
+        price: priceRes.status,
+        spoilage: spoilageRes.status,
+        shelfLife: shelfLifeRes.status,
+        demand: demandRes.status
+      }
+    };
+
     /* ---------- COST CALCULATION ---------- */
 
     /* ---------- ESTIMATE TRANSPORT COST ---------- */
@@ -410,7 +422,7 @@ const initiateLogistics = async (req, res) => {
     ------------------------------ */
 
     const demandScore =
-      cropBatch.aiInsight?.mlOutput?.demandScore || 0.5;
+      cropBatch.mlInsights?.demandScore || 0.5;
 
     const bestWarehouse = selectBestWarehouse(
       cropBatch,
@@ -511,7 +523,7 @@ const getMyBatches = async (req, res) => {
     // 2️⃣ Optional status filter
     const { status } = req.query;
 
-    let query = { farmer: farmerId };
+    let query = { farmerId };
 
     if (status) {
       query.status = status;
@@ -519,7 +531,7 @@ const getMyBatches = async (req, res) => {
 
     // 3️⃣ Fetch batches created by farmer
     const batches = await CropBatch.find(query)
-      .populate("warehouse", "name location latitude longitude coldStorageAvailable")
+      .populate("logistics.warehouseId", "name location coldStorageAvailable")
       .sort({ createdAt: -1 });
 
     // 4️⃣ Format response data
@@ -533,21 +545,19 @@ const getMyBatches = async (req, res) => {
 
       status: batch.status,
 
-      expectedSellingPrice: batch.expectedSellingPrice,
-      finalFarmerPrice: batch.finalFarmerPrice,
-      confidenceScore: batch.confidenceScore,
+      offer: batch.offer || null,
 
-      spoilageProbability: batch.spoilageProbability,
-      shelfLifeDays: batch.shelfLifeDays,
-      demandScore: batch.demandScore,
+      spoilageProbability: batch.mlInsights?.spoilageProbability ?? null,
+      shelfLifeDays: batch.mlInsights?.shelfLifeDays ?? null,
+      demandScore: batch.mlInsights?.demandScore ?? null,
+      aiInsight: batch.aiInsight?.farmerView || null,
 
-      warehouse: batch.warehouse
+      warehouse: batch.logistics?.warehouseId
         ? {
-            name: batch.warehouse.name,
-            location: batch.warehouse.location,
-            latitude: batch.warehouse.latitude,
-            longitude: batch.warehouse.longitude,
-            coldStorageAvailable: batch.warehouse.coldStorageAvailable,
+            warehouseId: batch.logistics.warehouseId._id,
+            name: batch.logistics.warehouseId.name,
+            location: batch.logistics.warehouseId.location,
+            coldStorageAvailable: batch.logistics.warehouseId.coldStorageAvailable,
           }
         : null,
 
@@ -556,7 +566,9 @@ const getMyBatches = async (req, res) => {
             transportMode: batch.logistics.transportMode,
             estimatedDistanceKm: batch.logistics.estimatedDistanceKm,
             estimatedTransportCost: batch.logistics.estimatedTransportCost,
-            estimatedTravelTime: batch.logistics.estimatedTravelTime,
+            estimatedTravelTimeMin: batch.logistics.estimatedTravelTimeMin,
+            pickupWindow: batch.logistics.pickupWindow,
+            assignedAt: batch.logistics.assignedAt,
           }
         : null,
 

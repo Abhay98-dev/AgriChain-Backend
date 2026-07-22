@@ -83,12 +83,20 @@ const getAvailableBatchesForBuyer = async (req, res) => {
 
     let buyer = null;
 
-    if (buyerId) {
-      buyer = await User.findById(buyerId);
+    const requesterId = req.user.userId;
+    const effectiveBuyerId = buyerId || requesterId;
+
+    if (buyerId && buyerId !== requesterId) {
+      return res.status(403).json({
+        success: false,
+        message: "You cannot view marketplace distance for another user"
+      });
     }
 
+    buyer = await User.findById(effectiveBuyerId);
+
     const batches = await CropBatch.find({
-      status: { $in: ["IN_TRANSIT", "STORED"] }
+      status: { $in: ["IN_TRANSIT", "STORED", "AT_WAREHOUSE"] }
     }).sort({ updatedAt: -1 });
 
     const formatted = [];
@@ -103,18 +111,25 @@ const getAvailableBatchesForBuyer = async (req, res) => {
       let estimatedTravelHours = null;
       let spoilageWarning = null;
 
-      if (buyer && warehouse) {
+      const hasBuyerCoordinates =
+        buyer?.location?.latitude !== undefined &&
+        buyer?.location?.longitude !== undefined;
+
+      if (buyer && warehouse && hasBuyerCoordinates) {
 
         const roadData = await getRoadDistanceKm(
-          warehouse.latitude,
-          warehouse.longitude,
+          warehouse.location.latitude,
+          warehouse.location.longitude,
           buyer.location.latitude,
           buyer.location.longitude
         );
 
         distanceFromBuyer = roadData.distanceKm;
 
-        estimatedTravelHours = roadData.durationHours;
+        estimatedTravelHours =
+          roadData.durationMin != null
+            ? Number((roadData.durationMin / 60).toFixed(2))
+            : null;
 
         const sellByDate = batch.aiInsight?.warehouseView?.sellByDate;
 
@@ -203,17 +218,25 @@ const getAvailableBatchesForBuyer = async (req, res) => {
 const purchaseBatch = async (req, res) => {
   try {
     const { buyerId, batchId, finalAgreedPrice } = req.body;
+    const requesterId = req.user.userId;
 
     // 1. Basic validation
-    if (!buyerId || !batchId || !finalAgreedPrice) {
+    if (!batchId || finalAgreedPrice === undefined || finalAgreedPrice === null) {
       return res.status(400).json({
         success: false,
-        message: "buyerId, batchId and finalAgreedPrice are required"
+        message: "batchId and finalAgreedPrice are required"
+      });
+    }
+
+    if (buyerId && buyerId !== requesterId) {
+      return res.status(403).json({
+        success: false,
+        message: "You cannot purchase on behalf of another user"
       });
     }
 
     // 2. Find buyer (User)
-    const buyer = await User.findById(buyerId);
+    const buyer = await User.findById(requesterId);
 
     if (!buyer) {
       return res.status(404).json({
@@ -233,7 +256,7 @@ const purchaseBatch = async (req, res) => {
     }
 
     // 4. Check batch availability
-    if (!["STORED", "IN_TRANSIT"].includes(cropBatch.status)) {
+    if (!["STORED", "IN_TRANSIT", "AT_WAREHOUSE"].includes(cropBatch.status)) {
       return res.status(400).json({
         success: false,
         message: "Batch already sold or unavailable"
@@ -241,7 +264,7 @@ const purchaseBatch = async (req, res) => {
     }
 
     // 5. Prevent self-buy (IMPORTANT)
-    if (cropBatch.farmerId?.toString() === buyerId) {
+    if (cropBatch.farmerId?.toString() === requesterId) {
       return res.status(400).json({
         success: false,
         message: "You cannot buy your own crop"
@@ -309,6 +332,7 @@ const getBuyerOrders = async (req, res) => {
   try {
 
     const { buyerId } = req.params;
+    const requesterId = req.user.userId;
 
     if (!buyerId) {
 
@@ -317,6 +341,13 @@ const getBuyerOrders = async (req, res) => {
         message: "buyerId is required"
       });
 
+    }
+
+    if (buyerId !== requesterId) {
+      return res.status(403).json({
+        success: false,
+        message: "You cannot view another user's orders"
+      });
     }
 
     const buyer = await User.findById(buyerId);

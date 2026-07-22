@@ -37,6 +37,7 @@ const farmerRoute = require("./routes/farmerRoute");
 const warehouseRoutes = require("./routes/warehouseRoutes");
 const buyerRoute = require("./routes/buyerRoute");
 const authRoute = require("./routes/authRoute");
+const traceRoute = require("./routes/traceRoute");
 
 app.get("/", (req, res) => {
   res.send("helll");
@@ -46,6 +47,7 @@ app.use("/api/farmer", farmerRoute);
 app.use("/api/warehouse", warehouseRoutes);
 app.use("/api/buyer", buyerRoute);
 app.use("/api/auth", authRoute);
+app.use("/api/trace", traceRoute);
 
 const port = process.env.PORT || 3000;
 

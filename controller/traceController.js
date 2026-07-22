@@ -1,83 +1,97 @@
-// const CropBatch = require("../models/cropBatch");
-// const { getBatchEvents } = require("../blockchain/read");
+const CropBatch = require("../models/cropBatch");
 
-// const traceBatch = async (req, res) => {
-//   try {
-//     const { batchId } = req.params;
+const traceBatch = async (req, res) => {
+  try {
+    const { batchId } = req.params;
 
-//     /* ---------- VALIDATION ---------- */
-//     if (!batchId) {
-//       return res.status(400).json({
-//         success: false,
-//         message: "batchId is required"
-//       });
-//     }
+    if (!batchId) {
+      return res.status(400).json({
+        success: false,
+        message: "batchId is required"
+      });
+    }
 
-//     /* ---------- FETCH OFF-CHAIN DATA ---------- */
-//     const batch = await CropBatch.findById(batchId);
+    const batch = await CropBatch.findById(batchId)
+      .populate("farmerId", "name location")
+      .populate("logistics.warehouseId", "name location coldStorageAvailable")
+      .populate("buyer.userId", "name location");
 
-//     if (!batch) {
-//       return res.status(404).json({
-//         success: false,
-//         message: "Batch not found"
-//       });
-//     }
+    if (!batch) {
+      return res.status(404).json({
+        success: false,
+        message: "Batch not found"
+      });
+    }
 
-//     /* ---------- FETCH ON-CHAIN EVENTS ---------- */
-//     const chainEvents = await getBatchEvents(batchId);
+    const timeline = [
+      {
+        step: "BATCH_CREATED",
+        source: "OFF_CHAIN",
+        verified: false,
+        timestamp: batch.createdAt
+      }
+    ];
 
-//     /* ---------- BUILD TIMELINE ---------- */
-//     const timeline = [];
+    if (batch.offer?.generatedAt) {
+      timeline.push({
+        step: "OFFER_GENERATED",
+        source: "OFF_CHAIN",
+        verified: false,
+        timestamp: batch.offer.generatedAt
+      });
+    }
 
-//     // Batch created (always exists off-chain)
-//     timeline.push({
-//       step: "BATCH_CREATED",
-//       source: "OFF_CHAIN",
-//       verified: chainEvents.some(e => e.type === "BATCH_CREATED"),
-//       timestamp: batch.createdAt
-//     });
+    if (["ACCEPTED", "IN_TRANSIT", "STORED", "AT_WAREHOUSE", "AT_MARKET", "SOLD", "CLOSED"].includes(batch.status)) {
+      timeline.push({
+        step: "OFFER_ACCEPTED",
+        source: "OFF_CHAIN",
+        verified: false,
+        timestamp: batch.updatedAt
+      });
+    }
 
-//     // Logistics
-//     if (batch.logistics) {
-//       timeline.push({
-//         step: "LOGISTICS_STARTED",
-//         source: "OFF_CHAIN",
-//         verified: chainEvents.some(e => e.type === "LOGISTICS_STARTED"),
-//         timestamp: batch.logistics.assignedAt
-//       });
-//     }
+    if (batch.logistics?.assignedAt) {
+      timeline.push({
+        step: "LOGISTICS_STARTED",
+        source: "OFF_CHAIN",
+        verified: false,
+        timestamp: batch.logistics.assignedAt
+      });
+    }
 
-//     // Sold
-//     if (batch.status === "SOLD") {
-//       timeline.push({
-//         step: "BATCH_SOLD",
-//         source: "OFF_CHAIN",
-//         verified: chainEvents.some(e => e.type === "BATCH_SOLD"),
-//         timestamp: batch.buyer?.soldAt
-//       });
-//     }
+    if (batch.buyer?.soldAt) {
+      timeline.push({
+        step: "BATCH_SOLD",
+        source: "OFF_CHAIN",
+        verified: false,
+        timestamp: batch.buyer.soldAt
+      });
+    }
 
-//     /* ---------- FINAL RESPONSE ---------- */
-//     return res.status(200).json({
-//       success: true,
-//       batchId,
-//       cropType: batch.cropType,
-//       status: batch.status,
-//       verifiedOnBlockchain: timeline.every(t => t.verified),
-//       timeline,
-//       blockchainProofs: chainEvents.map(e => ({
-//         type: e.type,
-//         txHash: e.txHash
-//       }))
-//     });
+    return res.status(200).json({
+      success: true,
+      batchId: batch._id,
+      cropType: batch.cropType,
+      quantity: batch.quantity,
+      unit: batch.unit,
+      status: batch.status,
+      farmer: batch.farmerId || null,
+      warehouse: batch.logistics?.warehouseId || null,
+      buyer: batch.buyer?.userId || null,
+      offer: batch.offer || null,
+      logistics: batch.logistics || null,
+      aiInsight: batch.aiInsight || null,
+      verifiedOnBlockchain: false,
+      blockchainEnabled: false,
+      timeline
+    });
+  } catch (error) {
+    console.error("Trace Error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to fetch trace data"
+    });
+  }
+};
 
-//   } catch (error) {
-//     console.error("Trace Error:", error);
-//     return res.status(500).json({
-//       success: false,
-//       message: "Failed to fetch trace data"
-//     });
-//   }
-// };
-
-// module.exports = { traceBatch };
+module.exports = { traceBatch };

@@ -173,21 +173,39 @@ const getUrgentBatches = async (req, res) => {
 
 const createWarehouse = async (req, res) => {
   try {
-    const { name, location, latitude, longitude, coldStorageAvailable } = req.body;
+    const {
+      name,
+      location,
+      latitude,
+      longitude,
+      coldStorageAvailable,
+      capacityKg,
+      currentLoadKg
+    } = req.body;
 
-    if (!name || !location || latitude === undefined || longitude === undefined) {
+    const warehouseLocation = {
+      latitude: location?.latitude ?? latitude,
+      longitude: location?.longitude ?? longitude
+    };
+
+    if (
+      !name ||
+      warehouseLocation.latitude === undefined ||
+      warehouseLocation.longitude === undefined ||
+      capacityKg === undefined
+    ) {
       return res.status(400).json({
         success: false,
-        message: "name, location, latitude, longitude are required"
+        message: "name, location.latitude, location.longitude and capacityKg are required"
       });
     }
 
     const warehouse = await Warehouse.create({
       name,
-      location,
-      latitude,
-      longitude,
-      coldStorageAvailable: coldStorageAvailable || false
+      location: warehouseLocation,
+      coldStorageAvailable: coldStorageAvailable || false,
+      capacityKg,
+      currentLoadKg: currentLoadKg || 0
     });
 
     return res.status(201).json({
@@ -208,10 +226,21 @@ const createWarehouse = async (req, res) => {
 const updateWarehouse = async (req, res) => {
   try {
     const { warehouseId } = req.params;
+    const updateData = { ...req.body };
+
+    if (req.body.latitude !== undefined) {
+      updateData["location.latitude"] = req.body.latitude;
+      delete updateData.latitude;
+    }
+
+    if (req.body.longitude !== undefined) {
+      updateData["location.longitude"] = req.body.longitude;
+      delete updateData.longitude;
+    }
 
     const warehouse = await Warehouse.findByIdAndUpdate(
       warehouseId,
-      req.body,
+      updateData,
       { new: true, runValidators: true }
     );
 

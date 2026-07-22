@@ -1,8 +1,8 @@
-// // routes/trace.routes.js
-// const express = require("express");
-// const router = express.Router();
-// const { traceBatch } = require("../controller/traceController");
+const express = require("express");
+const router = express.Router();
 
-// router.get("/:batchId", traceBatch);
+const { traceBatch } = require("../controller/traceController");
 
-// module.exports = router;
+router.get("/:batchId", traceBatch);
+
+module.exports = router;

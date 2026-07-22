@@ -4,6 +4,7 @@ const cropBatchSchema = new mongoose.Schema(
   {
     farmerId: {
       type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
       required: true,
       index: true
     },
@@ -60,6 +61,7 @@ const cropBatchSchema = new mongoose.Schema(
         "ACCEPTED",    // farmer accepted offer
         "REJECTED",    // farmer rejected
         "IN_TRANSIT",  // pickup started
+        "STORED",
         "AT_WAREHOUSE",
         "AT_MARKET",
         "SOLD",
@@ -72,6 +74,9 @@ const cropBatchSchema = new mongoose.Schema(
     // Backend decision snapshot (CRITICAL)
     offer: {
       expectedSellingPrice: {
+        type: Number
+      },
+      estimatedDistanceKm: {
         type: Number
       },
       transportCost: {
@@ -101,17 +106,36 @@ const cropBatchSchema = new mongoose.Schema(
       }
     },
     logistics: {
+      warehouseId: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "Warehouse"
+      },
       transportMode: {
       type: String,
       enum: ["NORMAL", "COLD_CHAIN"]
       },
       estimatedDistanceKm: Number,
+      estimatedTravelTimeMin: Number,
       estimatedTransportCost: Number,
       pickupWindow: {
       from: Date,
       to: Date
-    },
+      },
       assignedAt: Date
+    },
+    mlInsights: {
+      spoilageProbability: Number,
+      shelfLifeDays: Number,
+      demandScore: Number,
+      mlHealth: {
+        price: String,
+        spoilage: String,
+        shelfLife: String,
+        demand: String
+      }
+    },
+    aiInsight: {
+      type: mongoose.Schema.Types.Mixed
     },
     blockchainBatchId: {
       type: Number,
