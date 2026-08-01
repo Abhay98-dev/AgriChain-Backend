@@ -4,6 +4,10 @@ const Warehouse = require("../models/warehouse");
 
 const { getDistanceKm } = require("../utils/distance");
 const { getRoadDistanceKm } = require("../utils/RoadDistance");
+const {
+  quantityToKg,
+  decreaseWarehouseInventory
+} = require("../utils/inventory");
 
 
 /* --------------------------------------------------
@@ -169,6 +173,8 @@ const getAvailableBatchesForBuyer = async (req, res) => {
 
         unit: batch.unit,
 
+        quality: batch.quality || null,
+
         warehouseId: warehouse?._id || null,
 
         warehouseName: warehouse?.name || "Unknown",
@@ -281,6 +287,15 @@ const purchaseBatch = async (req, res) => {
       });
     }
 
+    const wasStoredInWarehouse =
+      ["STORED", "AT_WAREHOUSE"].includes(cropBatch.status);
+
+    let warehouse = null;
+
+    if (wasStoredInWarehouse && cropBatch.logistics?.warehouseId) {
+      warehouse = await Warehouse.findById(cropBatch.logistics.warehouseId);
+    }
+
     // 7. NOW update batch (correct order)
     cropBatch.status = "SOLD";
 
@@ -289,6 +304,12 @@ const purchaseBatch = async (req, res) => {
       finalSellingPrice: finalAgreedPrice,
       soldAt: new Date()
     };
+
+    if (warehouse) {
+      const quantityKg = quantityToKg(cropBatch.quantity, cropBatch.unit);
+      decreaseWarehouseInventory(warehouse, cropBatch.cropType, quantityKg);
+      await warehouse.save();
+    }
 
     await cropBatch.save();
 

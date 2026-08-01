@@ -8,7 +8,8 @@ const {
   getAllWarehouses,
   getWarehouseBatches,
   getWarehouseBatchById,
-  getUrgentBatches
+  getUrgentBatches,
+  receiveBatchAtWarehouse
 } = require("../controller/warehouseController");
 
 const { authenticate } = require("../middlewares/authMiddleware");
@@ -67,6 +68,14 @@ router.get(
   authenticate,
   requireRole("ADMIN"),
   getWarehouseBatchById
+);
+
+// Mark an in-transit batch as received by its assigned warehouse
+router.post(
+  "/batch/:batchId/receive",
+  authenticate,
+  requireRole("ADMIN"),
+  receiveBatchAtWarehouse
 );
 
 // Get urgent batches (high spoilage risk)

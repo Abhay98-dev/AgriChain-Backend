@@ -74,6 +74,7 @@ const traceBatch = async (req, res) => {
       cropType: batch.cropType,
       quantity: batch.quantity,
       unit: batch.unit,
+      quality: batch.quality || null,
       status: batch.status,
       farmer: batch.farmerId || null,
       warehouse: batch.logistics?.warehouseId || null,

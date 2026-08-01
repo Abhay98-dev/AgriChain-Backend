@@ -23,6 +23,27 @@ const mapSpoilageRiskToHistoricalRate = (risk) => {
   return 0.15;
 };
 
+const calculateQualityScore = (quality = {}) => {
+  const gradeScore = {
+    A: 0.95,
+    B: 0.78,
+    C: 0.6
+  };
+
+  let score = gradeScore[quality.grade] || 0.75;
+
+  if (quality.damagePercentage !== undefined) {
+    score -= Math.min(quality.damagePercentage, 100) / 200;
+  }
+
+  if (quality.moistureLevel !== undefined) {
+    const moisturePenalty = Math.abs(quality.moistureLevel - 12) / 100;
+    score -= Math.min(moisturePenalty, 0.2);
+  }
+
+  return Math.min(1, Math.max(0.3, Number(score.toFixed(2))));
+};
+
 /* --------------------------------------------------
    PREDICT PRICE (MATCHES ML SCHEMA)
    {
@@ -39,14 +60,15 @@ const predictPrice = async ({
   cropType,
   quantity,
   harvestDate,
-  location
+  location,
+  quality
 }) => {
   const payload = {
     crop_type: cropType,
     region: location?.district || location?.state || "Unknown",
     demand_tons: Math.max(quantity / 1000, 1), // rough market demand
     supply_tons: Math.max(quantity / 1200, 1), // rough supply estimate
-    avg_quality_score: 0.75, // default quality (can improve later)
+    avg_quality_score: calculateQualityScore(quality),
     avg_batch_age_days: calculateHarvestAgeDays(harvestDate)
   };
 

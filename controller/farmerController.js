@@ -4,6 +4,7 @@ const { getGeminiBatchAnalysis } = require("../services/geminiService");
 const { getRoadDistanceKm } = require("../utils/RoadDistance");
 const { selectBestWarehouse } = require("../utils/selectBestWarehouse");
 const { getDistanceKm } = require("../utils/distance");
+const { quantityToKg, hasWarehouseCapacity } = require("../utils/inventory");
 
 const {
   predictPrice,
@@ -11,6 +12,39 @@ const {
   predictSpoilage,
   predictShelfLife
 } = require("../services/mlService");
+
+const validateQuality = (quality) => {
+  if (!quality) {
+    return null;
+  }
+
+  if (quality.grade && !["A", "B", "C"].includes(quality.grade)) {
+    return "Quality grade must be A, B or C";
+  }
+
+  if (
+    quality.moistureLevel !== undefined &&
+    (quality.moistureLevel < 0 || quality.moistureLevel > 100)
+  ) {
+    return "Moisture level must be between 0 and 100";
+  }
+
+  if (
+    quality.damagePercentage !== undefined &&
+    (quality.damagePercentage < 0 || quality.damagePercentage > 100)
+  ) {
+    return "Damage percentage must be between 0 and 100";
+  }
+
+  if (
+    quality.inspectionResult &&
+    !["PENDING", "PASSED", "FAILED", "NEEDS_REVIEW"].includes(quality.inspectionResult)
+  ) {
+    return "Invalid inspection result";
+  }
+
+  return null;
+};
 
 /* --------------------------------------------------
    CREATE CROP BATCH
@@ -24,7 +58,8 @@ const createCropBatch = async (req, res) => {
       unit,
       harvestDate,
       spoilageRisk,
-      location
+      location,
+      quality
     } = req.body;
 
     /* ---------- VALIDATION ---------- */
@@ -73,6 +108,15 @@ const createCropBatch = async (req, res) => {
       });
     }
 
+    const qualityError = validateQuality(quality);
+
+    if (qualityError) {
+      return res.status(400).json({
+        success: false,
+        message: qualityError
+      });
+    }
+
     /* ---------- CREATE BASE BATCH ---------- */
 
   //  const farmerId = "65f000000000000000000001"; // TODO: replace after auth
@@ -85,13 +129,14 @@ const createCropBatch = async (req, res) => {
       harvestDate,
       spoilageRisk,
       location,
+      quality,
       status: "LISTED"
     });
 
     /* ---------- ML INFERENCE (SAFE & PARTIAL) ---------- */
 
     const results = await Promise.allSettled([
-      predictPrice({ cropType, quantity, harvestDate, location }),
+      predictPrice({ cropType, quantity, harvestDate, location, quality }),
       predictSpoilage({ cropType, harvestDate, spoilageRisk }),
       predictShelfLife({ cropType, harvestDate }),
       predictDemand({ cropType, location })
@@ -149,7 +194,11 @@ const createCropBatch = async (req, res) => {
     /* ---------- ESTIMATE TRANSPORT COST ---------- */
 
     // fetch warehouses
+    const quantityKg = quantityToKg(quantity, unit);
     const warehouses = await Warehouse.find();
+    const availableWarehouses = warehouses.filter(warehouse =>
+      hasWarehouseCapacity(warehouse, quantityKg)
+    );
 
     if (!warehouses.length) {
       return res.status(500).json({
@@ -158,10 +207,17 @@ const createCropBatch = async (req, res) => {
       });
     }
 
+    if (!availableWarehouses.length) {
+      return res.status(400).json({
+        success: false,
+        message: "No warehouse has enough available capacity for this crop batch"
+      });
+    }
+
     // select best warehouse using existing logic
     const bestWarehouse = selectBestWarehouse(
     { location, spoilageRisk },
-    warehouses,
+    availableWarehouses,
     demandScore
     );
 
@@ -229,7 +285,8 @@ const createCropBatch = async (req, res) => {
         unit,
         harvestDate,
         spoilageRisk,
-        location
+        location,
+        quality
       };
 
       const mlOutput = {
@@ -278,6 +335,7 @@ const createCropBatch = async (req, res) => {
       message: "Crop listed, offer generated, and AI explanation created",
       batchId: cropBatch._id,
       status: cropBatch.status,
+      quality: cropBatch.quality || null,
       offer: cropBatch.offer,
       aiInsight: aiInsight?.farmerView || null,
       meta: {
@@ -408,12 +466,23 @@ const initiateLogistics = async (req, res) => {
       });
     }
 
+    const quantityKg = quantityToKg(cropBatch.quantity, cropBatch.unit);
     const warehouses = await Warehouse.find();
+    const availableWarehouses = warehouses.filter(warehouse =>
+      hasWarehouseCapacity(warehouse, quantityKg)
+    );
 
     if (!warehouses.length) {
       return res.status(500).json({
         success: false,
         message: "No warehouses available"
+      });
+    }
+
+    if (!availableWarehouses.length) {
+      return res.status(400).json({
+        success: false,
+        message: "No warehouse has enough available capacity for this crop batch"
       });
     }
 
@@ -426,7 +495,7 @@ const initiateLogistics = async (req, res) => {
 
     const bestWarehouse = selectBestWarehouse(
       cropBatch,
-      warehouses,
+      availableWarehouses,
       demandScore
     );
 
@@ -542,6 +611,7 @@ const getMyBatches = async (req, res) => {
       quantity: batch.quantity,
       unit: batch.unit,
       harvestDate: batch.harvestDate,
+      quality: batch.quality || null,
 
       status: batch.status,
 

@@ -52,6 +52,47 @@ const cropBatchSchema = new mongoose.Schema(
       }
     },
 
+    quality: {
+      grade: {
+        type: String,
+        enum: ["A", "B", "C"]
+      },
+      moistureLevel: {
+        type: Number,
+        min: 0,
+        max: 100
+      },
+      size: {
+        type: String,
+        trim: true
+      },
+      color: {
+        type: String,
+        trim: true
+      },
+      damagePercentage: {
+        type: Number,
+        min: 0,
+        max: 100
+      },
+      images: [
+        {
+          type: String,
+          trim: true
+        }
+      ],
+      inspectionResult: {
+        type: String,
+        enum: ["PENDING", "PASSED", "FAILED", "NEEDS_REVIEW"],
+        default: "PENDING"
+      },
+      inspectedAt: Date,
+      inspectedBy: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "User"
+      }
+    },
+
     // Lifecycle state (backend-controlled)
     status: {
       type: String,

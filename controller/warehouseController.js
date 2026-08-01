@@ -1,5 +1,43 @@
 const Warehouse = require("../models/warehouse");
 const CropBatch = require("../models/cropBatch");
+const {
+  quantityToKg,
+  hasWarehouseCapacity,
+  increaseWarehouseInventory
+} = require("../utils/inventory");
+
+const validateQuality = (quality) => {
+  if (!quality) {
+    return null;
+  }
+
+  if (quality.grade && !["A", "B", "C"].includes(quality.grade)) {
+    return "Quality grade must be A, B or C";
+  }
+
+  if (
+    quality.moistureLevel !== undefined &&
+    (quality.moistureLevel < 0 || quality.moistureLevel > 100)
+  ) {
+    return "Moisture level must be between 0 and 100";
+  }
+
+  if (
+    quality.damagePercentage !== undefined &&
+    (quality.damagePercentage < 0 || quality.damagePercentage > 100)
+  ) {
+    return "Damage percentage must be between 0 and 100";
+  }
+
+  if (
+    quality.inspectionResult &&
+    !["PENDING", "PASSED", "FAILED", "NEEDS_REVIEW"].includes(quality.inspectionResult)
+  ) {
+    return "Invalid inspection result";
+  }
+
+  return null;
+};
 
 /* --------------------------------------------------
    GET ALL WAREHOUSES (FOR SELECTION SCREEN)
@@ -10,7 +48,10 @@ const getAllWarehouses = async (req, res) => {
     const warehouses = await Warehouse.find({}, {
       name: 1,
       location: 1,
-      coldStorageAvailable: 1
+      coldStorageAvailable: 1,
+      capacityKg: 1,
+      currentLoadKg: 1,
+      inventory: 1
     });
 
     return res.status(200).json({
@@ -54,6 +95,7 @@ const getWarehouseBatches = async (req, res) => {
       unit: batch.unit,
       status: batch.status,
       harvestDate: batch.harvestDate,
+      quality: batch.quality || null,
       warehouseId: batch.logistics?.warehouseId || null,
       sellByDate: batch.aiInsight?.warehouseView?.sellByDate || null,
       riskLevel: batch.aiInsight?.warehouseView?.riskLevel || "UNKNOWN",
@@ -109,6 +151,7 @@ const getWarehouseBatchById = async (req, res) => {
         unit: batch.unit,
         status: batch.status,
         harvestDate: batch.harvestDate,
+        quality: batch.quality || null,
         logistics: batch.logistics,
         offer: batch.offer,
         aiInsight: batch.aiInsight?.warehouseView || null
@@ -156,6 +199,7 @@ const getUrgentBatches = async (req, res) => {
         batchId: batch._id,
         cropType: batch.cropType,
         quantity: batch.quantity,
+        quality: batch.quality || null,
         status: batch.status,
         riskLevel: batch.aiInsight?.warehouseView?.riskLevel,
         sellByDate: batch.aiInsight?.warehouseView?.sellByDate
@@ -205,7 +249,8 @@ const createWarehouse = async (req, res) => {
       location: warehouseLocation,
       coldStorageAvailable: coldStorageAvailable || false,
       capacityKg,
-      currentLoadKg: currentLoadKg || 0
+      currentLoadKg: currentLoadKg || 0,
+      inventory: []
     });
 
     return res.status(201).json({
@@ -219,6 +264,110 @@ const createWarehouse = async (req, res) => {
     return res.status(500).json({
       success: false,
       message: "Failed to create warehouse"
+    });
+  }
+};
+
+const receiveBatchAtWarehouse = async (req, res) => {
+  try {
+    const { batchId } = req.params;
+    const { status = "STORED", quality } = req.body;
+
+    if (!["STORED", "AT_WAREHOUSE"].includes(status)) {
+      return res.status(400).json({
+        success: false,
+        message: "Status must be STORED or AT_WAREHOUSE"
+      });
+    }
+
+    const qualityError = validateQuality(quality);
+
+    if (qualityError) {
+      return res.status(400).json({
+        success: false,
+        message: qualityError
+      });
+    }
+
+    const batch = await CropBatch.findById(batchId);
+
+    if (!batch) {
+      return res.status(404).json({
+        success: false,
+        message: "Crop batch not found"
+      });
+    }
+
+    if (batch.status !== "IN_TRANSIT") {
+      return res.status(400).json({
+        success: false,
+        message: "Only IN_TRANSIT batches can be received at warehouse"
+      });
+    }
+
+    const warehouseId = batch.logistics?.warehouseId;
+
+    if (!warehouseId) {
+      return res.status(400).json({
+        success: false,
+        message: "Batch has no assigned warehouse"
+      });
+    }
+
+    const warehouse = await Warehouse.findById(warehouseId);
+
+    if (!warehouse) {
+      return res.status(404).json({
+        success: false,
+        message: "Assigned warehouse not found"
+      });
+    }
+
+    const quantityKg = quantityToKg(batch.quantity, batch.unit);
+
+    if (!hasWarehouseCapacity(warehouse, quantityKg)) {
+      return res.status(400).json({
+        success: false,
+        message: "Warehouse does not have enough remaining capacity"
+      });
+    }
+
+    if (quality) {
+      batch.quality = {
+        ...batch.quality?.toObject?.(),
+        ...quality,
+        inspectedAt: new Date(),
+        inspectedBy: req.user.userId
+      };
+    }
+
+    increaseWarehouseInventory(warehouse, batch.cropType, quantityKg);
+
+    batch.status = status;
+
+    await warehouse.save();
+    await batch.save();
+
+    return res.status(200).json({
+      success: true,
+      message: "Batch received at warehouse successfully",
+      batchId: batch._id,
+      status: batch.status,
+      quality: batch.quality || null,
+      warehouse: {
+        warehouseId: warehouse._id,
+        name: warehouse.name,
+        capacityKg: warehouse.capacityKg,
+        currentLoadKg: warehouse.currentLoadKg,
+        availableCapacityKg: warehouse.capacityKg - warehouse.currentLoadKg,
+        inventory: warehouse.inventory
+      }
+    });
+  } catch (error) {
+    console.error("Receive Batch Error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to receive batch at warehouse"
     });
   }
 };
@@ -298,6 +447,7 @@ module.exports = {
   getWarehouseBatches,
   getWarehouseBatchById,
   getUrgentBatches,
+  receiveBatchAtWarehouse,
   createWarehouse,
   updateWarehouse,
   deleteWarehouse

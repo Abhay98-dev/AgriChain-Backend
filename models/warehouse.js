@@ -31,7 +31,22 @@ const warehouseSchema = new mongoose.Schema(
     currentLoadKg: {
       type: Number,
       default: 0
-    }
+    },
+
+    inventory: [
+      {
+        cropType: {
+          type: String,
+          required: true,
+          trim: true
+        },
+        quantityKg: {
+          type: Number,
+          required: true,
+          min: 0
+        }
+      }
+    ]
   },
   { timestamps: true }
 );
