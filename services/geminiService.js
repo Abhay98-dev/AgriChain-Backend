@@ -9,7 +9,25 @@ const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
 const model = genAI.getGenerativeModel({
   model: "gemini-flash-latest",
+  generationConfig: {
+    // Ask Gemini for machine-readable output. The cleanup below remains as a
+    // fallback because models can still occasionally add Markdown fences.
+    responseMimeType: "application/json",
+  },
 });
+
+/**
+ * Removes an optional Markdown code fence before parsing a Gemini response.
+ */
+const parseGeminiJson = (responseText) => {
+  const cleanedResponse = responseText
+    .trim()
+    .replace(/^```(?:json)?\s*/i, "")
+    .replace(/\s*```\s*$/, "")
+    .trim();
+
+  return JSON.parse(cleanedResponse);
+};
 
 /**
  * AI reasoning for crop batch analysis
@@ -68,8 +86,8 @@ OUTPUT FORMAT (STRICT JSON ONLY):
     const result = await model.generateContent(prompt);
     const responseText = result.response.text();
 
-    // Safety: ensure valid JSON
-    const parsedResponse = JSON.parse(responseText);
+    // Gemini may wrap otherwise valid JSON in a ```json Markdown fence.
+    const parsedResponse = parseGeminiJson(responseText);
 
     return parsedResponse;
   } catch (error) {
