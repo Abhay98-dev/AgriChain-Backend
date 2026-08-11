@@ -1,4 +1,5 @@
 const express = require("express");
+const { query, param, body } = require("express-validator");
 const router = express.Router();
 
 const {
@@ -13,7 +14,8 @@ const {
 } = require("../controller/warehouseController");
 
 const { authenticate } = require("../middlewares/authMiddleware");
-const  {requireRole}  = require("../middlewares/roleMiddleware");
+const { requireRole } = require("../middlewares/roleMiddleware");
+const { validateRequest } = require("../middlewares/validationMiddleware");
 
 /* --------------------------------------------------
    WAREHOUSE CRUD (ADMIN ONLY)
@@ -24,6 +26,22 @@ router.post(
   "/create",
   authenticate,
   requireRole("ADMIN"),
+  [
+    body("name").trim().notEmpty().withMessage("Warehouse name is required"),
+    body("location").custom((value, { req }) => {
+      if (!value?.latitude && value?.latitude !== 0) {
+        throw new Error("location.latitude is required");
+      }
+      if (!value?.longitude && value?.longitude !== 0) {
+        throw new Error("location.longitude is required");
+      }
+      return true;
+    }),
+    body("capacityKg")
+      .isFloat({ gt: 0 })
+      .withMessage("capacityKg must be a positive number")
+  ],
+  validateRequest,
   createWarehouse
 );
 
@@ -48,7 +66,15 @@ router.delete(
 -------------------------------------------------- */
 
 // Get all warehouses (for farmer warehouse selection)
-router.get("/all", getAllWarehouses);
+router.get(
+  "/all",
+  [
+    query("page").optional().isInt({ min: 1 }).withMessage("page must be a positive integer"),
+    query("limit").optional().isInt({ min: 1, max: 100 }).withMessage("limit must be between 1 and 100")
+  ],
+  validateRequest,
+  getAllWarehouses
+);
 
 /* --------------------------------------------------
    WAREHOUSE OPERATIONS
@@ -59,6 +85,12 @@ router.get(
   "/:warehouseId/batches",
   authenticate,
   requireRole("ADMIN"),
+  [
+    param("warehouseId").isMongoId().withMessage("warehouseId must be a valid ID"),
+    query("page").optional().isInt({ min: 1 }).withMessage("page must be a positive integer"),
+    query("limit").optional().isInt({ min: 1, max: 100 }).withMessage("limit must be between 1 and 100")
+  ],
+  validateRequest,
   getWarehouseBatches
 );
 
@@ -67,6 +99,8 @@ router.get(
   "/batch/:batchId",
   authenticate,
   requireRole("ADMIN"),
+  [param("batchId").isMongoId().withMessage("batchId must be a valid ID")],
+  validateRequest,
   getWarehouseBatchById
 );
 
@@ -75,6 +109,8 @@ router.post(
   "/batch/:batchId/receive",
   authenticate,
   requireRole("ADMIN"),
+  [param("batchId").isMongoId().withMessage("batchId must be a valid ID")],
+  validateRequest,
   receiveBatchAtWarehouse
 );
 
@@ -83,6 +119,12 @@ router.get(
   "/:warehouseId/urgent",
   authenticate,
   requireRole("ADMIN"),
+  [
+    param("warehouseId").isMongoId().withMessage("warehouseId must be a valid ID"),
+    query("page").optional().isInt({ min: 1 }).withMessage("page must be a positive integer"),
+    query("limit").optional().isInt({ min: 1, max: 100 }).withMessage("limit must be between 1 and 100")
+  ],
+  validateRequest,
   getUrgentBatches
 );
 

@@ -5,6 +5,8 @@ const {
   hasWarehouseCapacity,
   increaseWarehouseInventory
 } = require("../utils/inventory");
+const { getPagination } = require("../utils/pagination");
+const { logger } = require("../utils/logger");
 
 const validateQuality = (quality) => {
   if (!quality) {
@@ -45,6 +47,7 @@ const validateQuality = (quality) => {
 
 const getAllWarehouses = async (req, res) => {
   try {
+    const { page, limit, skip } = getPagination(req.query.page, req.query.limit);
     const warehouses = await Warehouse.find({}, {
       name: 1,
       location: 1,
@@ -52,16 +55,24 @@ const getAllWarehouses = async (req, res) => {
       capacityKg: 1,
       currentLoadKg: 1,
       inventory: 1
-    });
+    })
+      .sort({ name: 1 })
+      .skip(skip)
+      .limit(limit);
+
+    const totalWarehouses = await Warehouse.countDocuments();
 
     return res.status(200).json({
       success: true,
+      page,
+      limit,
+      total: totalWarehouses,
       count: warehouses.length,
       warehouses
     });
 
   } catch (error) {
-    console.error("Get Warehouses Error:", error);
+    logger.error("Get Warehouses Error: %o", error);
     return res.status(500).json({
       success: false,
       message: "Failed to fetch warehouses"
@@ -84,9 +95,17 @@ const getWarehouseBatches = async (req, res) => {
       });
     }
 
+    const { page, limit, skip } = getPagination(req.query.page, req.query.limit);
+    const totalBatches = await CropBatch.countDocuments({
+      "logistics.warehouseId": warehouseId
+    });
+
     const batches = await CropBatch.find({
       "logistics.warehouseId": warehouseId
-    }).sort({ "logistics.assignedAt": -1 });
+    })
+      .sort({ "logistics.assignedAt": -1 })
+      .skip(skip)
+      .limit(limit);
 
     const formattedBatches = batches.map(batch => ({
       batchId: batch._id,
@@ -105,12 +124,15 @@ const getWarehouseBatches = async (req, res) => {
     return res.status(200).json({
       success: true,
       warehouseId,
+      page,
+      limit,
+      total: totalBatches,
       count: formattedBatches.length,
       batches: formattedBatches
     });
 
   } catch (error) {
-    console.error("Get Warehouse Batches Error:", error);
+    logger.error("Get Warehouse Batches Error: %o", error);
     return res.status(500).json({
       success: false,
       message: "Failed to fetch warehouse batches"
@@ -182,20 +204,26 @@ const getUrgentBatches = async (req, res) => {
       });
     }
 
-    const batches = await CropBatch.find({
+    const { page, limit, skip } = getPagination(req.query.page, req.query.limit);
+    const allBatches = await CropBatch.find({
       "logistics.warehouseId": warehouseId
     });
 
-    const urgentBatches = batches.filter(batch => {
+    const urgentBatches = allBatches.filter(batch => {
       const risk = batch.aiInsight?.warehouseView?.riskLevel;
       return risk === "HIGH";
     });
 
+    const pagedUrgentBatches = urgentBatches.slice(skip, skip + limit);
+
     return res.status(200).json({
       success: true,
       warehouseId,
-      count: urgentBatches.length,
-      batches: urgentBatches.map(batch => ({
+      page,
+      limit,
+      total: urgentBatches.length,
+      count: pagedUrgentBatches.length,
+      batches: pagedUrgentBatches.map(batch => ({
         batchId: batch._id,
         cropType: batch.cropType,
         quantity: batch.quantity,
@@ -207,7 +235,7 @@ const getUrgentBatches = async (req, res) => {
     });
 
   } catch (error) {
-    console.error("Get Urgent Batches Error:", error);
+    logger.error("Get Urgent Batches Error: %o", error);
     return res.status(500).json({
       success: false,
       message: "Failed to fetch urgent batches"

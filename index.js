@@ -1,9 +1,15 @@
 const express = require("express");
+const helmet = require("helmet");
+const morgan = require("morgan");
+const cors = require("cors");
+
 const app = express();
 
 const dotenv = require("dotenv");
 const connectDB = require("./connectDB");
-const cors = require("cors");
+const { apiLimiter, authLimiter } = require("./middlewares/rateLimiter");
+const { notFound, errorHandler } = require("./middlewares/errorMiddleware");
+const { logger } = require("./utils/logger");
 
 dotenv.config(); // ✅ LOAD FIRST
 
@@ -11,6 +17,8 @@ const allowedOrigins = [
   process.env.FRONTEND_URL,
   "http://localhost:5173"
 ];
+
+app.use(helmet());
 
 app.use(
   cors({
@@ -29,9 +37,16 @@ app.use(
   })
 );
 
-connectDB();
+app.use(morgan("combined", {
+  stream: {
+    write: (message) => logger.info(message.trim())
+  }
+}));
 
+app.use(apiLimiter);
 app.use(express.json());
+
+connectDB();
 
 const farmerRoute = require("./routes/farmerRoute");
 const warehouseRoutes = require("./routes/warehouseRoutes");
@@ -46,11 +61,14 @@ app.get("/", (req, res) => {
 app.use("/api/farmer", farmerRoute);
 app.use("/api/warehouse", warehouseRoutes);
 app.use("/api/buyer", buyerRoute);
-app.use("/api/auth", authRoute);
+app.use("/api/auth", authLimiter, authRoute);
 app.use("/api/trace", traceRoute);
+
+app.use(notFound);
+app.use(errorHandler);
 
 const port = process.env.PORT || 3000;
 
 app.listen(port, () => {
-  console.log(`Server running on port ${port}`);
+  logger.info(`Server running on port ${port}`);
 });

@@ -8,6 +8,8 @@ const {
   quantityToKg,
   decreaseWarehouseInventory
 } = require("../utils/inventory");
+const { getPagination } = require("../utils/pagination");
+const { logger } = require("../utils/logger");
 
 
 /* --------------------------------------------------
@@ -103,9 +105,11 @@ const getAvailableBatchesForBuyer = async (req, res) => {
       status: { $in: ["IN_TRANSIT", "STORED", "AT_WAREHOUSE"] }
     }).sort({ updatedAt: -1 });
 
+    const { page, limit, skip } = getPagination(req.query.page, req.query.limit);
+    const pagedBatches = batches.slice(skip, skip + limit);
     const formatted = [];
 
-    for (const batch of batches) {
+    for (const batch of pagedBatches) {
 
       const warehouse = await Warehouse.findById(
         batch.logistics?.warehouseId
@@ -199,13 +203,16 @@ const getAvailableBatchesForBuyer = async (req, res) => {
 
     return res.status(200).json({
       success: true,
+      page,
+      limit,
+      total: batches.length,
       count: formatted.length,
       batches: formatted
     });
 
   } catch (error) {
 
-    console.error("Get Buyer Marketplace Error:", error);
+    logger.error("Get Buyer Marketplace Error: %o", error);
 
     return res.status(500).json({
       success: false,
@@ -382,23 +389,27 @@ const getBuyerOrders = async (req, res) => {
 
     }
 
-    return res.status(200).json({
+    const { page, limit, skip } = getPagination(req.query.page, req.query.limit);
+    const orders = buyer.orders || [];
+    const pagedOrders = orders.slice(skip, skip + limit);
 
+    return res.status(200).json({
       success: true,
       buyerId: buyer._id,
-      orders: buyer.orders || []
-
+      page,
+      limit,
+      total: orders.length,
+      count: pagedOrders.length,
+      orders: pagedOrders
     });
 
   } catch (error) {
 
-    console.error("Get Buyer Orders Error:", error);
+    logger.error("Get Buyer Orders Error: %o", error);
 
     return res.status(500).json({
-
       success: false,
       message: "Failed to fetch buyer orders"
-
     });
 
   }
