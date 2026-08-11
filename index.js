@@ -18,6 +18,9 @@ const allowedOrigins = [
   "http://localhost:5173"
 ];
 
+// Trust Render's proxy headers so express-rate-limit can use X-Forwarded-For safely.
+app.set("trust proxy", true);
+
 app.use(helmet());
 
 app.use(
