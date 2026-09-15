@@ -17,6 +17,44 @@ A Node.js + Express backend for AgriChain, providing authenticated marketplace, 
 - Pagination support on list endpoints
 - Centralized error handling
 
+## Core Project Capabilities
+
+### Smart crop listing and offer generation
+
+- Farmers can create crop batches with harvest details, geolocation, spoilage risk, and structured quality data (grade, moisture, size, colour, damage, images, and inspection state).
+- Crop batches follow a controlled supply-chain lifecycle: `LISTED` → `OFFERED` → `ACCEPTED`/`REJECTED` → `IN_TRANSIT` → `STORED` or `AT_WAREHOUSE` → `SOLD` (with additional `AT_MARKET` and `CLOSED` states available in the data model).
+- A listing generates a transparent farmer offer, including expected selling price, estimated distance, transport, storage, labour, spoilage-buffer, platform-margin, final farmer price, and confidence.
+- The backend calls an ML service for price, demand, spoilage probability, and shelf-life predictions. If an ML prediction is unavailable, safe fallback values allow the listing flow to continue and expose per-prediction health status.
+- Gemini produces advisory-only farmer and warehouse views: pricing explanation, quality assessment, storage and selling recommendations, sell-by guidance, and risk warnings. It does not set the final price or override ML outputs.
+
+### Warehouse selection engine and logistics planning
+
+- The warehouse selection engine considers only warehouses with enough remaining capacity after normalising crop quantity from kilograms or quintals.
+- Eligible warehouses are ranked using farmer-to-warehouse distance, predicted demand, spoilage priority, and a cold-storage bonus for high-spoilage crops.
+- Once a farmer accepts an offer, logistics assigns the highest-scoring warehouse, retrieves driving distance and duration through OSRM, estimates transport cost, and creates a six-to-twelve-hour pickup window.
+- The assigned warehouse, transport mode, route distance, travel time, estimated cost, and assignment time are retained with the crop batch for operational visibility and traceability.
+
+### Warehouse operations and inventory control
+
+- Administrators can create, update, delete, and paginate warehouse records, including coordinates, capacity, cold-storage availability, current load, and crop-level inventory.
+- Warehouse staff can receive only batches assigned to their warehouse and currently `IN_TRANSIT`; receipt changes the batch to `STORED` or `AT_WAREHOUSE` and optionally records a quality inspection.
+- Receiving a batch verifies remaining capacity and increments both the warehouse load and crop-specific inventory in kilograms.
+- Selling a stored batch decrements warehouse load and removes empty crop inventory entries.
+- Warehouse views expose assigned batches, AI warehouse advice, sell-by dates, and an urgent-batch queue based on high AI risk levels.
+
+### Buyer marketplace and fulfilment safeguards
+
+- The marketplace lists batches that are in transit or available at warehouses, with quality, warehouse, expected price, risk level, and sell-by information.
+- For buyers with coordinates, it calculates warehouse-to-buyer road distance and delivery time, and warns when the estimated journey exceeds the remaining sell-by window.
+- Buyers cannot buy their own crop, buy unavailable batches, purchase on another user's behalf, or submit a price below the batch's minimum farmer price.
+- Completed purchases mark the batch as `SOLD`, record buyer and sale information, update warehouse inventory when applicable, and append the purchase to the buyer's order history.
+
+### Traceability and access control
+
+- A public crop trace endpoint returns the farmer, assigned warehouse, buyer, offer, logistics details, AI insight, current state, and an event timeline covering creation, offer generation, acceptance, logistics start, and sale.
+- Trace responses explicitly identify that the current timeline is off-chain; blockchain fields are present in the data model, but blockchain verification is not enabled by this backend.
+- JWT claims enforce authenticated user access for farmer and buyer actions, while warehouse administration and receiving operations require the `ADMIN` role.
+
 ## Project Structure
 
 - `index.js` - app entrypoint
